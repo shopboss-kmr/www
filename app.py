@@ -562,7 +562,7 @@ def home():
     <!-- CATEGORIES -->
     <div class="categories">
 
-        <a class="cat" href="/home">🏠 Home</a>
+
 
         <a class="cat" href="/home?category=Cricket">🏏 Cricket</a>
 
@@ -2050,18 +2050,20 @@ def orders():
 
             <h2>No Orders Yet</h2>
 
-            <a href="/"
-            style="
-                display:inline-block;
-                margin-top:15px;
-                background:#ffd814;
-                padding:10px 22px;
-                text-decoration:none;
-                color:black;
-                border-radius:8px;
-                font-weight:bold;
-            ">
-                Continue Shopping
+            <a href="/orders"
+                style="
+                    display:inline-block;
+                    margin-top:20px;
+                    background:#ffd814;
+                    padding:14px 26px;
+                    font-size:20px;
+                    text-align:center;
+                    text-decoration:none;
+                    color:black;
+                    border-radius:60px;
+                    font-weight:bold;
+                ">
+                    Continue Shopping
             </a>
 
         </div>
@@ -2582,8 +2584,12 @@ def logout():
 
     return redirect("/splash")
 # ---------------- RUN ----------------
+# ---------------- RUN ----------------
 if __name__ == "__main__":
 
     init_db()
 
-    ShopBoss.run(host="0.0.0.0", port=5000, debug=False)
+    ShopBoss.run(
+        host="0.0.0.0",
+        port=5500
+    )

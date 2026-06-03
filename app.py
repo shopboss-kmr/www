@@ -1,11 +1,38 @@
-from flask import Flask, request, redirect, session
+from flask import Flask, request, redirect, session, send_from_directory
 import psycopg2
 import requests
 import os
+from werkzeug.utils import secure_filename
 
 # ---------------- APP ----------------
+def send_order_email(username, items_text, grand_total, payment_method):
+    try:
+        requests.post(
+            "https://api.emailjs.com/api/v1.0/email/send",
+            headers={"Content-Type": "application/json"},
+            json={
+                "service_id": "service_shopboss2",
+                "template_id": "template_3jp7vty",
+                "user_id": "9bTfVOFVe_u1Mt51L",
+                "template_params": {
+                    "name": username,
+                    "email": "kfayizwani@gmail.com",
+                    "message":
+                     "NEW ORDER RECEIVED\n\nUser: " + username + "\n\nAmount: Rs." + str(grand_total) + "\n\nPayment: " + payment_method + "\n\nItems: " + items_text
+                }
+            }
+        )()
+    except:
+        pass
 ShopBoss = Flask(__name__)
 ShopBoss.secret_key = "fayiz_shopboss_secure_2026_ultra"
+
+# ----------------UPLOADS 1 -------------------
+
+UPLOAD_FOLDER = "static/uploads"
+ShopBoss.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # ---------------- DATABASE ----------------
 def db():
@@ -111,41 +138,6 @@ def init_db():
     )
     """)
     conn.commit()
-
-    # DEMO PRODUCTS
-    cur.execute("SELECT * FROM products")
-
-    if not cur.fetchall():
-
-        cur.execute("""
-        INSERT INTO products(name,price,image,category)
-        VALUES
-        (
-            'iPhone 15',
-            120000,
-            'https://m.media-amazon.com/images/I/71d7rfSl0wL.jpg',
-            'Electronics'
-        ),
-
-        (
-            'Nike Shoes',
-            4500,
-            'https://m.media-amazon.com/images/I/61utX8kBDlL._UY695_.jpg',
-            'Fashion'
-        ),
-
-        (
-            'Headphones',
-            2500,
-            'https://m.media-amazon.com/images/I/61CGHv6kmWL.jpg',
-            'Electronics'
-        )
-        """)
-
-    conn.commit()
-
-    cur.close()
-    conn.close()
 # ---------------- REVIEW HELPERS ----------------
 def avg_stars(product_id):
     conn = db()
@@ -173,7 +165,7 @@ def header():
 <html>
 
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=0.67">
 
 <style>
 
@@ -221,6 +213,7 @@ body{{
     padding:0 12px;
     font-size:14px;
     border-radius:4px 0 0 4px;
+    text-align:left;
 }}
 
 .search-btn{{
@@ -261,21 +254,47 @@ body{{
 @media(max-width:850px){{
 
     .topbar{{
-        flex-wrap:wrap;
         height:auto;
-        padding:10px;
+        padding:6px 8px;
+        gap:8px;
+        flex-wrap:nowrap;
+        overflow:visible;
+    }}
+
+    .logo{{
+        font-size:14px;
+        flex-shrink:0;
     }}
 
     .search-form{{
+        flex:1 1 0;
+        min-width:0;
+    }}
+
+    .search-input{{
+        height:30px;
+        font-size:11px;
+        padding:0 6px;
+        min-width:0;
         width:100%;
-        order:3;
+    }}
+
+    .search-btn{{
+        height:30px;
+        width:46px;
+        font-size:10px;
+        flex-shrink:0;
     }}
 
     .nav{{
-        width:100%;
-        justify-content:center;
-        flex-wrap:wrap;
-        margin-top:8px;
+        gap:8px;
+        flex-shrink:0;
+        flex-wrap:nowrap;
+    }}
+
+    .nav a{{
+        font-size:11px;
+        white-space:nowrap;
     }}
 
 }}
@@ -295,7 +314,7 @@ body{{
 
         <input
         type="text"
-        name="search"
+        name="q"
         class="search-input"
         placeholder="Search products">
 
@@ -331,7 +350,7 @@ body{{
 // SECRET ADMIN SHORTCUT
 document.addEventListener("keydown", function(e){{
 
-    if(e.shiftKey && e.key.toLowerCase() === "a"){{
+    if(e.shiftKey && e.key.toLowerCase() === "z"){{
         window.location.href = "/admin";
     }}
 
@@ -355,7 +374,7 @@ def splash():
     <head>
 
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="robots" content="index, follow">
         <meta name="description" content="ShopBoss — Kashmir's first online shopping app. Buy Cricket, Football, Fashion, Electronics, Kitchen & more at best prices. Developed by Ahmad Fayiz.">
         <meta name="keywords" content="ShopBoss, Kashmir shopping, online shopping Kashmir, buy cricket gear, electronics Kashmir, Ahmad Fayiz">
@@ -366,10 +385,14 @@ def splash():
         <link rel="canonical" href="https://www--shopbosskmr.replit.app/splash">
 
         <title>ShopBoss • Developed by Ahmad Fayiz</title>
-        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+        <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+        <link rel="manifest" href="/site.webmanifest">
         <link rel="shortcut icon" href="/favicon.ico">
 
         <style>
+
+            *{ box-sizing:border-box; }
 
             body{
                 margin:0;
@@ -385,27 +408,26 @@ def splash():
             .box{
                 text-align:center;
                 animation:zoom 2s;
+                padding:20px;
             }
 
             h1{
                 color:#ff9900;
-                font-size:70px;
+                font-size:clamp(36px, 10vw, 70px);
                 margin:0;
             }
 
             p{
                 color:white;
-                font-size:20px;
+                font-size:clamp(14px, 3.5vw, 20px);
                 margin-top:10px;
             }
-            
 
             @keyframes zoom{
                 from{
                     transform:scale(0.5);
                     opacity:0;
                 }
-
                 to{
                     transform:scale(1);
                     opacity:1;
@@ -420,7 +442,7 @@ def splash():
 
         <div class="box">
 
-            <h1>Welcome To Shopboss</h1>
+            <h1>Welcome To ShopBoss</h1>
 
             <p>Kashmir's First Shopping App By Ahmad Fayiz</p>
 
@@ -433,7 +455,6 @@ def splash():
     <script>setTimeout(function(){ window.location="/check"; }, 3000);</script>
     </html>
     """
-# ---------------- CHECK ----------------
 # ---------------- CHECK ----------------
 @ShopBoss.route("/check")
 def check():
@@ -513,7 +534,7 @@ def home():
 
     <title>ShopBoss • Developed by Ahmad Fayiz</title>
 
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=0.67">
     <meta name="robots" content="index, follow">
     <meta name="description" content="ShopBoss — Shop Cricket, Football, Fashion, Electronics, Kitchen & more at best prices in Kashmir.">
     <meta name="keywords" content="ShopBoss, Kashmir online shopping, cricket gear Kashmir, electronics, fashion">
@@ -522,7 +543,9 @@ def home():
     <meta property="og:url" content="https://www--shopbosskmr.replit.app/home">
     <meta property="og:type" content="website">
     <link rel="canonical" href="https://www--shopbosskmr.replit.app/home">
-    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
     <link rel="shortcut icon" href="/favicon.ico">
 
     <style>
@@ -731,7 +754,7 @@ def home():
 
         <a class="cat" href="/home?category=Decoration">🎉 Decoration</a>
 
-        <a class="cat" href="/home?category=House">🏠 House</a>
+        <a class="cat" href="/home?category=House">🏠 House Hold</a>
 
         <a class="cat" href="/orders">📦 My Orders</a>
 
@@ -873,7 +896,7 @@ def product_detail(pid):
             <textarea name="comment" placeholder="Write your review (optional)..." rows="3"
                 style="width:100%;padding:8px;box-sizing:border-box;border:1px solid #ccc;border-radius:4px;font-size:13px;resize:vertical;"></textarea>
             <button type="submit"
-                style="margin-top:10px;background:#febd69;border:none;padding:10px 26px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">
+                style="margin-top:10px;background:#ffd814;border:none;padding:10px 26px;border-radius:4px;cursor:pointer;font-weight:bold;font-size:14px;">
                 Submit Review
             </button>
             <script>
@@ -921,11 +944,11 @@ def product_detail(pid):
     else:
         review_form = '<div style="color:#888;margin-top:14px;font-size:13px;"><a href="/login">Login</a> to leave a review.</div>'
 
-    add_btn = f"<a href='/add/{pid}' style='display:inline-block;background:#febd69;border:none;padding:10px 28px;border-radius:6px;cursor:pointer;font-weight:bold;text-decoration:none;color:#111;'>Add To Cart</a>" if stock > 0 else "<div style='display:inline-block;background:#ccc;color:#666;padding:10px 28px;border-radius:6px;'>Sold Out</div>"
+    add_btn = f"<a href='/add/{pid}' style='display:inline-block;background:#ffd814;border:none;padding:10px 28px;border-radius:6px;cursor:pointer;font-weight:bold;text-decoration:none;color:#111;'>Add To Cart</a>" if stock > 0 else "<div style='display:inline-block;background:#ccc;color:#666;padding:10px 28px;border-radius:6px;'>Sold Out</div>"
 
     html = header() + f"""<html><head>
     <title>{p[1]} - ShopBoss</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=0.67">
     <style>
     body{{margin:0;background:#eaeded;font-family:Arial;}}
     .pd-wrap{{max-width:860px;margin:30px auto;background:white;border-radius:10px;padding:28px;box-shadow:0 2px 12px rgba(0,0,0,0.08);}}
@@ -992,6 +1015,87 @@ def signup():
         conn = db()
         cur = conn.cursor()
 
+        cur.execute("SELECT 1 FROM users WHERE username=%s", (username,))
+        exists = cur.fetchone()
+
+        if exists:
+            cur.close()
+            conn.close()
+            return f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=0.67">
+                <title>Username Taken – ShopBoss</title>
+                <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+                <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+                <link rel="manifest" href="/site.webmanifest">
+            </head>
+            <body style="margin:0;font-family:Arial;background:#f2f2f2;">
+            <div style="
+                display:flex;
+                justify-content:center;
+                align-items:center;
+                min-height:100vh;
+                padding:20px;
+                box-sizing:border-box;
+            ">
+                <div style="
+                    background:white;
+                    border-radius:16px;
+                    padding:40px 32px;
+                    max-width:360px;
+                    width:100%;
+                    text-align:center;
+                    box-shadow:0 4px 20px rgba(0,0,0,0.1);
+                ">
+                    <div style="font-size:56px;margin-bottom:16px;">😕</div>
+
+                    <h2 style="margin:0 0 10px;font-size:22px;color:#111;">
+                        Username Already Taken
+                    </h2>
+
+                    <p style="color:#555;font-size:14px;margin:0 0 28px;line-height:1.6;">
+                        <strong style="color:#111;">@{username}</strong> is already in use.<br>
+                        Do you want to log in instead?
+                    </p>
+
+                    <a href="/login"
+                    style="
+                        display:block;
+                        background:#ffd814;
+                        color:#111;
+                        text-decoration:none;
+                        padding:12px;
+                        border-radius:8px;
+                        font-weight:bold;
+                        font-size:15px;
+                        margin-bottom:12px;
+                    ">
+                        Yes, Log Me In
+                    </a>
+
+                    <a href="/signup"
+                    style="
+                        display:block;
+                        background:#f2f2f2;
+                        color:#333;
+                        text-decoration:none;
+                        padding:12px;
+                        border-radius:8px;
+                        font-weight:bold;
+                        font-size:15px;
+                    ">
+                        Try a Different Username
+                    </a>
+
+                </div>
+            </div>
+            </body>
+            </html>
+            """
+
         cur.execute(
             "INSERT INTO users(username,password) VALUES(%s,%s)",
             (username,password)
@@ -1012,11 +1116,13 @@ def signup():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=0.67">
         <title>ShopBoss • Developed by Ahmad Fayiz</title>
         <meta name="description" content="ShopBoss — Online shopping for Cricket, Football, Fashion, Shoes, Electronics, Kitchen & more. Best prices in Kashmir. Developed by Ahmad Fayiz.">
         <meta name="robots" content="index, follow">
-        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+        <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+        <link rel="manifest" href="/site.webmanifest">
         <link rel="shortcut icon" href="/favicon.ico">
     </head>
     <body style="margin:0;">
@@ -1181,11 +1287,13 @@ def login():
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=0.67">
         <title>ShopBoss • Developed by Ahmad Fayiz</title>
         <meta name="description" content="ShopBoss — Online shopping for Cricket, Football, Fashion, Shoes, Electronics, Kitchen & more. Best prices in Kashmir. Developed by Ahmad Fayiz.">
         <meta name="robots" content="index, follow">
-        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+        <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+        <link rel="manifest" href="/site.webmanifest">
         <link rel="shortcut icon" href="/favicon.ico">
     </head>
     <body style="margin:0;">
@@ -1519,7 +1627,7 @@ def cart():
             border-radius:10px;
             box-shadow:0 2px 6px rgba(0,0,0,0.1);
             position:sticky;
-            top:10px;
+            top:7px;
         ">
 
             <h2>Order Summary</h2><hr>
@@ -1568,7 +1676,7 @@ def admin():
 
             return redirect("/panel")
 
-        
+
 
     return """
     <div style="
@@ -1610,7 +1718,7 @@ def admin():
                 background:#ffd814;
                 border:none;
             ">
-                Enter - Ahmad Fayiz
+                Enter
             </button>
 
         </form>
@@ -1627,46 +1735,84 @@ def panel():
 
     conn = db()
     cur = conn.cursor()
-    
 
-    # -------- ADD PRODUCT --------
+    # ---------------- POST ----------------
     if request.method == "POST":
 
-        # ADD
+        # ADD PRODUCT
         if "add" in request.form:
+
+            image = ""
+
+            image_file = request.files.get("image")
+
+            if image_file and image_file.filename:
+
+                filename = secure_filename(image_file.filename)
+
+                filepath = os.path.join(
+                    ShopBoss.config["UPLOAD_FOLDER"],
+                    filename
+                )
+
+                image_file.save(filepath)
+
+                image = "/" + filepath.replace("\\", "/")
 
             cur.execute(
                 """
-                INSERT INTO products(name,price,image,category)
+                INSERT INTO products
+                (name,price,image,category)
                 VALUES(%s,%s,%s,%s)
                 """,
                 (
                     request.form["name"],
                     request.form["price"],
-                    request.form["image"],
+                    image,
                     request.form["category"]
                 )
             )
 
-        # UPDATE
+        # UPDATE PRODUCT
         elif "update" in request.form:
+
+            image = request.form["old_image"]
+
+            image_file = request.files.get("image")
+
+            if image_file and image_file.filename:
+
+                filename = secure_filename(image_file.filename)
+
+                filepath = os.path.join(
+                    ShopBoss.config["UPLOAD_FOLDER"],
+                    filename
+                )
+
+                image_file.save(filepath)
+
+                image = "/" + filepath.replace("\\", "/")
 
             cur.execute(
                 """
                 UPDATE products
-                SET name=%s, price=%s, image=%s, category=%s
+                SET
+                    name=%s,
+                    price=%s,
+                    image=%s,
+                    category=%s
                 WHERE id=%s
                 """,
                 (
                     request.form["name"],
                     request.form["price"],
-                    request.form["image"],
+                    image,
                     request.form["category"],
                     request.form["id"]
                 )
             )
 
-        # DELETE
+        # DELETE PRODUCT
         elif "delete" in request.form:
 
             cur.execute(
@@ -1676,8 +1822,9 @@ def panel():
 
         conn.commit()
 
-    # GET PRODUCTS
-    cur.execute("SELECT * FROM products ORDER BY id DESC")
+    cur.execute(
+        "SELECT * FROM products ORDER BY id DESC"
+    )
 
     products = cur.fetchall()
 
@@ -1691,31 +1838,29 @@ def panel():
         font-family:Arial;
     ">
 
-        <!-- TOP BAR -->
         <div style="
             display:flex;
             justify-content:space-between;
             align-items:center;
             margin-bottom:20px;
-          ">
+        ">
+
             <a href="/all_orders"
             style="
-            background:#ffd814;
-            padding:10px 20px;
-            text-decoration:none;
-            color:black;
-            border-radius:6px;
-            font-weight:bold;
+                background:#ffd814;
+                padding:10px 20px;
+                text-decoration:none;
+                color:black;
+                border-radius:6px;
+                font-weight:bold;
             ">
-               View Orders
+                View Orders
             </a>
-        
 
             <h1>Admin Panel</h1>
 
         </div>
 
-        <!-- ADD PRODUCT BOX -->
         <div style="
             background:white;
             padding:20px;
@@ -1727,6 +1872,7 @@ def panel():
             <h2>Add Product</h2>
 
             <form method="post"
+            enctype="multipart/form-data"
             style="
                 display:flex;
                 gap:10px;
@@ -1751,37 +1897,41 @@ def panel():
                     padding:10px;
                 ">
 
-                <input
-                name="image"
-                placeholder="Image URL"
-                required
-                style="
+                <label style="
                     flex:2;
                     padding:10px;
+                    border:1px solid #ccc;
+                    background:white;
+                    cursor:pointer;
+                    border-radius:2px;
+                    display:flex;
+                    align-items:center;
                 ">
+                    Upload Image
+
+                    <input
+                    type="file"
+                    name="image"
+                    accept="image/*"
+                    required
+                    style="display:none;">
+                </label>
 
                 <select
                 name="category"
                 required
-                style="
-                    padding:10px;
-                ">
+                style="padding:10px;">
 
                     <option value="">Category</option>
-
                     <option>Cricket</option>
-
                     <option>Football</option>
-
                     <option>Fashion</option>
-
                     <option>Toys</option>
-
                     <option>Electronics</option>
-
                     <option>Kitchen</option>
-
                     <option>Garden</option>
+                    <option>Decoration</option>
+                    <option>House Hold</option>
 
                 </select>
 
@@ -1801,15 +1951,14 @@ def panel():
 
         </div>
 
-        <!-- PRODUCTS GRID -->
         <div style="
             display:grid;
-            grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+            grid-template-columns:
+            repeat(auto-fill,minmax(280px,1fr));
             gap:20px;
         ">
     """
 
-    # -------- PRODUCTS --------
     for p in products:
 
         category = p[4] if len(p) > 4 else "General"
@@ -1831,6 +1980,7 @@ def panel():
             ">
 
             <form method="post"
+            enctype="multipart/form-data"
             style="
                 margin-top:12px;
                 display:flex;
@@ -1839,6 +1989,10 @@ def panel():
             ">
 
                 <input type="hidden" name="id" value="{p[0]}">
+
+                <input type="hidden"
+                name="old_image"
+                value="{p[3]}">
 
                 <input
                 name="name"
@@ -1851,49 +2005,23 @@ def panel():
                 style="padding:10px;">
 
                 <input
+                type="file"
                 name="image"
-                value="{p[3]}"
-                style="padding:10px;">
+                accept="image/*">
 
                 <select
                 name="category"
                 style="padding:10px;">
 
-                    <option {"selected" if category=="Cricket" else ""}>
-                        Cricket
-                    </option>
-
-                    <option {"selected" if category=="Football" else ""}>
-                        Football
-                    </option>
-
-                    <option {"selected" if category=="Fashion" else ""}>
-                        Fashion
-                    </option>
-
-                    <option {"selected" if category=="Toys" else ""}>
-                        Toys
-                    </option>
-
-                    <option {"selected" if category=="Electronics" else ""}>
-                        Electronics
-                    </option>
-
-                    <option {"selected" if category=="Kitchen" else ""}>
-                        Kitchen
-                    </option>
-
-                     <option {"selected" if category=="Garden" else ""}>
-                        Garden
-                    </option>
-
-                    <option {"selected" if category=="Decoration" else ""}>
-                        Decoration
-                    </option>
-
-                    <option {"selected" if category=="Others" else ""}>
-                        Others
-                    </option>
+                    <option {"selected" if category=="Cricket" else ""}>Cricket</option>
+                    <option {"selected" if category=="Football" else ""}>Football</option>
+                    <option {"selected" if category=="Fashion" else ""}>Fashion</option>
+                    <option {"selected" if category=="Toys" else ""}>Toys</option>
+                    <option {"selected" if category=="Electronics" else ""}>Electronics</option>
+                    <option {"selected" if category=="Kitchen" else ""}>Kitchen</option>
+                    <option {"selected" if category=="Garden" else ""}>Garden</option>
+                    <option {"selected" if category=="Decoration" else ""}>Decoration</option>
+                    <option {"selected" if category=="House Hold" else ""}>House Hold</option>
 
                 </select>
 
@@ -1941,6 +2069,13 @@ def panel():
     conn.close()
 
     return html
+# ------------------UPLOADS-------------------
+@ShopBoss.route("/static/uploads/<path:filename>")
+def uploaded_file(filename):
+    return send_from_directory(
+        "static/uploads",
+        filename
+    )
 # ---------------- ALL ORDERS ----------------
 @ShopBoss.route("/all_orders")
 def all_orders():
@@ -1978,17 +2113,18 @@ def all_orders():
         <div style="
             background:white;
             padding:20px;
-            border-radius:12px;
-            margin-bottom:20px;
+            border-radius:20px;
+            margin-bottom:40px;
+            font-weight:bold;
         ">
 
-            <h2>Order #{o[0]}</h2>
+            <h2>Order No {o[0]}</h2>
 
-            <p>User: {o[1]}</p>
+            <p>Customer:- {o[1]}</p>
 
-            <p>Total: ₹{o[2]}</p>
+            <p>Total Amount: ₹{o[2]}</p>
 
-            <p>Status: <b>{o[3]}</b></p>
+            <p>Status: {o[3]}</b></p>
 
             <p>{o[4]}</p>
 
@@ -2021,6 +2157,7 @@ def all_orders():
 
     return html
 # ------------- ADDRESS --------------
+# ------------- ADDRESS --------------
 @ShopBoss.route("/address", methods=["GET", "POST"])
 def address():
 
@@ -2042,7 +2179,7 @@ def address():
         if len(mobile) != 10 or not mobile.isdigit():
             return """
             <h2 style='color:red;text-align:center;margin-top:50px;'>
-                Invalid Mobile Number
+                Dear Customer,Your Mobile Number Is Invalid
             </h2>
             """
 
@@ -2079,8 +2216,13 @@ def address():
                     </h2>
                     """
 
-                total += price * qty
+                subtotal = price * qty
 
+                total += subtotal
+
+                # =========================
+                # FIXED ITEMS TEXT
+                # =========================
                 items_text += f"{name}|||{qty}|||{image}\n"
 
         delivery_charge = 20 * sum(session.get("cart", {}).values())
@@ -2094,7 +2236,7 @@ def address():
 
             upi_id = "7006219128@ybl"
             name = "ShopBoss"
-            note = "ShopBoss Order"
+            note = "Pay To ShopBoss"
 
             upi_url = (
                 f"upi://pay?pa={upi_id}"
@@ -2117,66 +2259,143 @@ def address():
 
             conn.commit()
 
+            send_order_email(
+                session.get("user",""),
+                items_text,
+                grand_total,
+                "UPI - Payment Pending"
+            )
+
             session["cart"] = {}
 
             return f"""
-            <html>
-
+                        <html>
             <head>
-                <meta name="viewport"
-                content="width=device-width,initial-scale=1">
+                <meta name="viewport" content="width=device-width,initial-scale=0.67">
             </head>
 
-            <body style="
-                margin:0;
-                font-family:Arial;
-                background:#eaeded;
-            ">
+            <body style="margin:0;font-family:Arial;background:#eaeded;">
 
-            <div style="
-                height:100vh;
-                display:flex;
-                justify-content:center;
-                align-items:center;
-            ">
+            <div style="min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px;">
 
-                <div style="
-                    background:white;
-                    padding:30px;
-                    width:350px;
-                    border-radius:12px;
-                    text-align:center;
-                    box-shadow:0 2px 10px rgba(0,0,0,0.2);
-                ">
+                <div style="background:white;padding:30px;max-width:400px;width:100%;border-radius:12px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,0.2);">
 
-                    <h1 style="color:#131921;">
-                        Complete Payment
-                    </h1>
+                    <div style="font-size:40px;margin-bottom:10px;">&#128722;</div>
 
-                    <p style="font-size:18px;">
-                        Total Amount:
-                        <b>₹{grand_total}</b>
+                    <h2 style="color:#131921;margin:0 0 6px;">
+                        Pay via UPI
+                    </h2>
+
+                    <p style="color:#555;font-size:13px;margin:0 0 20px;">
+                        Open PhonePe, GPay, or Paytm and send the exact amount to the UPI ID below
                     </p>
 
-                    <a href="{upi_url}"
-                    style="
-                        display:inline-block;
-                        margin-top:20px;
-                        background:#fdd814;
-                        padding:12px 20px;
-                        text-decoration:none;
-                        color:black;
-                        font-weight:bold;
+                    <div style="background:#f5f5f5;border-radius:8px;padding:16px;margin-bottom:14px;">
+
+                        <p style="margin:0 0 4px;font-size:12px;color:#888;">
+                            UPI ID
+                        </p>
+
+                        <p style="margin:0;font-size:20px;font-weight:bold;color:#131921;letter-spacing:1px;" id="upiid">
+                            {upi_id}
+                        </p>
+
+                        <button
+                        onclick="navigator.clipboard.writeText('{upi_id}');this.innerText='Copied!';setTimeout(()=>this.innerText='Copy UPI ID',2000)"
+                        style="
+                            margin-top:10px;
+                            background:#ffd814;
+                            border:none;
+                            padding:8px 20px;
+                            border-radius:6px;
+                            cursor:pointer;
+                            font-weight:bold;
+                            font-size:13px;
+                        ">
+                            Copy UPI ID
+                        </button>
+
+                    </div>
+
+                    <div style="
+                        background:#fff8e1;
+                        border:2px solid #ffd814;
                         border-radius:8px;
+                        padding:14px;
+                        margin-bottom:18px;
                     ">
-                        Pay with UPI
-                    </a>
+
+                        <p style="margin:0 0 4px;font-size:12px;color:#888;">
+                            Amount to Pay
+                        </p>
+
+                        <p style="
+                            margin:0;
+                            font-size:28px;
+                            font-weight:bold;
+                            color:#131921;
+                        ">
+                            ₹{grand_total}
+                        </p>
+
+                    </div>
+
+                    <ol style="
+                        text-align:left;
+                        font-size:13px;
+                        color:#444;
+                        margin:0 0 18px;
+                        padding-left:18px;
+                        line-height:2;
+                    ">
+
+                        <li>Copy the UPI ID above</li>
+
+                        <li>Open PhonePe / GPay / Paytm</li>
+
+                        <li>Tap <b>Send Money</b> or <b>Pay</b></li>
+
+                        <li>
+                            Paste UPI ID &amp; enter amount
+                            <b>₹{grand_total}</b>
+                        </li>
+
+                        <li>Complete payment and come back</li>
+
+                        <li>Then Click I Have Paid</li>
+
+                    </ol>
+
+                    <form action="/payment-success" method="post">
+
+                        <input
+                        type="hidden"
+                        name="amount"
+                        value="{grand_total}">
+
+                        <button
+                        type="submit"
+                        style="
+                            width:100%;
+                            background:#ffd814;
+                            border:none;
+                            padding:13px;
+                            border-radius:8px;
+                            font-weight:bold;
+                            font-size:16px;
+                            cursor:pointer;
+                        ">
+                            I Have Paid &#10003;
+                        </button>
+
+                    </form>
 
                     <a href="/cart"
                     style="
                         display:block;
-                        margin-top:15px;
+                        margin-top:12px;
                         color:#007185;
+                        font-size:13px;
                     ">
                         ← Back to Cart
                     </a>
@@ -2215,10 +2434,17 @@ def address():
 
         conn.commit()
 
+        send_order_email(
+            session.get("user",""),
+            items_text,
+            grand_total,
+            "Cash On Delivery"
+        )
+
         session["cart"] = {}
 
         return f"""
-        <div style="
+                <div style="
             height:100vh;
             display:flex;
             justify-content:center;
@@ -2254,7 +2480,7 @@ def address():
                 style="
                     display:inline-block;
                     margin-top:15px;
-                    background:#febd69;
+                    background:#ffd814;
                     padding:12px 20px;
                     text-decoration:none;
                     color:black;
@@ -2350,7 +2576,7 @@ def address():
             <button style="
                 width:100%;
                 padding:12px;
-                background:#febd69;
+                background:#ffd814;
                 border:none;
                 font-weight:bold;
                 border-radius:6px;
@@ -2364,12 +2590,40 @@ def address():
     </div>
     """
 
+
 # -------- PAYMENT SUCCESSFUL ------------
 
 @ShopBoss.route("/payment-success", methods=["POST"])
 def payment_success():
 
-    return """
+    username = session.get("user", "Unknown")
+    amount = request.form.get("amount", "Unknown")
+
+    # EMAIL ADMIN ABOUT CLAIMED PAYMENT
+    try:
+        requests.post(
+            "https://api.emailjs.com/api/v1.0/email/send",
+            headers={"Content-Type": "application/json"},
+            json={
+                "service_id": "service_shopboss2",
+                "template_id": "template_3jp7vty",
+                "user_id": "9bTfVOFVe_u1Mt51L",
+                "template_params": {
+                    "name": username,
+                    "email": "kfayizwani@gmail.com",
+                    "message":
+                    "PAYMENT CLAIMED\n"
+                    "User: " + username +
+                    "\nAmount: Rs." + str(amount) +
+                    "\nPlease check UPI (7006219128@ybl) and verify.\n"
+                    "Confirm in admin panel (all_orders)."
+                }
+            }
+        )
+    except:
+        pass
+
+    return f"""
     <div style="
         height:100vh;
         display:flex;
@@ -2378,34 +2632,73 @@ def payment_success():
         background:#eaeded;
         font-family:Arial;
     ">
-
         <div style="
             background:white;
             padding:40px;
             border-radius:12px;
             text-align:center;
-            width:400px;
+            max-width:400px;
+            width:90%;
+            box-shadow:0 2px 10px rgba(0,0,0,0.15);
         ">
+            <div style="font-size:50px;">
+                &#9203;
+            </div>
 
-            <h1 style="
-                color:green;
-                font-size:60px;
+            <h2 style="
+                color:#131921;
+                margin:10px 0 6px;
             ">
-                ✔
-            </h1>
-
-            <h2>
-                Payment Successful
+                Order Placed!
             </h2>
 
-            <a href="/"
+            <p style="
+                color:#555;
+                font-size:14px;
+                margin:0 0 16px;
+            ">
+                Your order is
+                <b>awaiting payment verification</b>.
+                <br>
+                We will confirm it once we verify your UPI payment of
+                <b>₹{amount}</b>.
+            </p>
+
+            <div style="
+                background:#fff8e1;
+                border:2px solid #ffd814;
+                border-radius:8px;
+                padding:12px;
+                font-size:13px;
+                color:#444;
+                margin-bottom:20px;
+            ">
+                You will receive confirmation shortly after we check our UPI account.
+            </div>
+
+            <a href="/orders"
             style="
                 display:inline-block;
-                margin-top:15px;
-                background:#febd69;
-                padding:12px 20px;
+                margin-top:5px;
+                background:#ffd814;
+                padding:12px 24px;
                 text-decoration:none;
                 color:black;
+                font-weight:bold;
+                border-radius:8px;
+                margin-right:8px;
+            ">
+                My Orders
+            </a>
+
+            <a href="/home"
+            style="
+                display:inline-block;
+                margin-top:5px;
+                background:#131921;
+                padding:12px 24px;
+                text-decoration:none;
+                color:white;
                 font-weight:bold;
                 border-radius:8px;
             ">
@@ -2413,147 +2706,202 @@ def payment_success():
             </a>
 
         </div>
-
     </div>
     """
-# ---------------- ORDERS ----------------
-@ShopBoss.route("/orders")
-def orders():
 
-    if not session.get("user"):
-        return redirect("/login")
+---------------- DELETE SINGLE ORDER ----------------
+
+@ShopBoss.route("/delete_order/int:order_id")
+def delete_order(order_id):
+
+if not session.get("user"):
+    return redirect("/login")
+
+conn = db()
+cur = conn.cursor()
+
+cur.execute("""
+    DELETE FROM orders
+    WHERE id=%s
+    AND username=%s
+    AND status='Delivered'
+""", (order_id, session.get("user")))
+
+conn.commit()
+
+cur.close()
+conn.close()
+
+return redirect("/orders")
+---------------- DELETE MULTIPLE ORDERS ----------------
+
+@ShopBoss.route("/delete_orders", methods=["POST"])
+def delete_orders():
+
+if not session.get("user"):
+    return redirect("/login")
+
+order_ids = request.form.getlist("order_ids")
+
+if order_ids:
 
     conn = db()
     cur = conn.cursor()
 
-    cur.execute(
-        """
-        SELECT id,items,total,created_at,received,status
-        FROM orders
-        WHERE username=%s
-        ORDER BY id DESC
-        """,
-        (session.get("user"),)
-    )
+    for oid in order_ids:
 
-    orders = cur.fetchall()
+        cur.execute("""
+            DELETE FROM orders
+            WHERE id=%s
+            AND username=%s
+            AND status='Delivered'
+        """, (oid, session.get("user")))
 
-    html = header()
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+return redirect("/orders")
+---------------- ORDERS ----------------
+
+@ShopBoss.route("/orders")
+def orders():
+
+if not session.get("user"):
+    return redirect("/login")
+
+conn = db()
+cur = conn.cursor()
+
+cur.execute(
+    """
+    SELECT id,items,total,created_at,received,status
+    FROM orders
+    WHERE username=%s
+    ORDER BY id DESC
+    """,
+    (session.get("user"),)
+)
+
+orders = cur.fetchall()
+
+html = header()
+
+html += """
+<html>
+
+<head>
+
+<style>
+
+body{
+    margin:0;
+    background:#eaeded;
+    font-family:Arial;
+}
+
+.main{
+    padding:18px;
+}
+
+.order-card{
+    background:white;
+    padding:18px;
+    border-radius:15px;
+    margin-bottom:25px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+@keyframes truckmove{
+
+    0%{
+        transform:scaleX(-1) translateX(-3px);
+    }
+
+    50%{
+        transform:scaleX(-1) translateX(3px);
+    }
+
+    100%{
+        transform:scaleX(-1) translateX(-3px);
+    }
+}
+
+@media(max-width:900px){
+
+    .flex-box{
+        flex-direction:column;
+    }
+
+    .left-box{
+        width:100% !important;
+    }
+
+    .right-box{
+        width:100% !important;
+    }
+
+    .product-img{
+        width:100% !important;
+        height:220px !important;
+    }
+
+    .steps{
+        font-size:10px !important;
+    }
+
+    .truck{
+        font-size:24px !important;
+    }
+
+    .status-text{
+        font-size:24px !important;
+    }
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="main">
+
+    <h1 style="
+        margin-bottom:20px;
+    ">
+        📦 My Orders
+    </h1>
+"""
+
+if not orders:
 
     html += """
-    <html>
+    <div class="order-card">
 
-    <head>
+        <h2>No Orders Yet</h2>
 
-    <style>
+        <a href="/orders"
+            style="
+                display:inline-block;
+                margin-top:20px;
+                background:#ffd814;
+                padding:14px 26px;
+                font-size:20px;
+                text-align:center;
+                text-decoration:none;
+                color:black;
+                border-radius:60px;
+                font-weight:bold;
+            ">
+                Continue Shopping
+        </a>
 
-    body{
-        margin:0;
-        background:#eaeded;
-        font-family:Arial;
-    }
-
-    .main{
-        padding:18px;
-    }
-
-    .order-card{
-        background:white;
-        padding:18px;
-        border-radius:15px;
-        margin-bottom:25px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.08);
-    }
-
-    @keyframes truckmove{
-
-        0%{
-            transform:scaleX(-1) translateX(-3px);
-        }
-
-        50%{
-            transform:scaleX(-1) translateX(3px);
-        }
-
-        100%{
-            transform:scaleX(-1) translateX(-3px);
-        }
-    }
-
-    @media(max-width:900px){
-
-        .flex-box{
-            flex-direction:column;
-        }
-
-        .left-box{
-            width:100% !important;
-        }
-
-        .right-box{
-            width:100% !important;
-        }
-
-        .product-img{
-            width:100% !important;
-            height:220px !important;
-        }
-
-        .steps{
-            font-size:10px !important;
-        }
-
-        .truck{
-            font-size:24px !important;
-        }
-
-        .status-text{
-            font-size:24px !important;
-        }
-    }
-
-    </style>
-
-    </head>
-
-    <body>
-
-    <div class="main">
-
-        <h1 style="
-            margin-bottom:20px;
-        ">
-            📦 My Orders
-        </h1>
+    </div>
     """
-
-    # NO ORDERS
-    if not orders:
-
-        html += """
-        <div class="order-card">
-
-            <h2>No Orders Yet</h2>
-
-            <a href="/orders"
-                style="
-                    display:inline-block;
-                    margin-top:20px;
-                    background:#ffd814;
-                    padding:14px 26px;
-                    font-size:20px;
-                    text-align:center;
-                    text-decoration:none;
-                    color:black;
-                    border-radius:60px;
-                    font-weight:bold;
-                ">
-                    Continue Shopping
-            </a>
-
-        </div>
-        """
-
+html += """ <form method="post" action="/delete_orders"> 
+"""
     # ORDERS LOOP
     for o in orders:
 
@@ -2564,19 +2912,38 @@ def orders():
         received = o[4]
         status = o[5] if o[5] else "Ordered"
 
-        # PROGRESS WIDTH
+        delete_checkbox = ""
+
+        if status == "Delivered":
+            delete_checkbox = f"""
+            <label style="
+                display:flex;
+                align-items:center;
+                gap:8px;
+                color:red;
+                font-weight:bold;
+            ">
+                <input
+                    type="checkbox"
+                    name="order_ids"
+                    value="{order_id}"
+                    style="width:20px;height:20px;">
+                Select To Delete
+            </label>
+            """
+
         progress_width = (
             "12%" if status == "Ordered"
             else "32%" if status == "Packed"
             else "55%" if status == "Shipped"
             else "80%" if status == "Out For Delivery"
+            else "0%" if status == "Payment Pending"
             else "100%"
         )
 
         html += f"""
         <div class="order-card">
 
-            <!-- TOP -->
             <div style="
                 display:flex;
                 justify-content:space-between;
@@ -2594,6 +2961,8 @@ def orders():
                     ₹{total}
                 </h2>
 
+                {delete_checkbox}
+
                 <div style="
                     color:gray;
                     font-size:13px;
@@ -2604,7 +2973,6 @@ def orders():
             </div>
         """
 
-        # PRODUCTS
         for item in items.splitlines():
 
             try:
@@ -2614,248 +2982,253 @@ def orders():
                 name = parts[0]
 
                 if parts[1].startswith("http"):
-
                     image = parts[1]
                     qty = parts[2]
-
                 else:
-
                     qty = parts[1]
                     image = parts[2]
 
+                if not name.strip():
+                    continue
+
                 html += f"""
                 <div style="
+                    display:flex;
+                    align-items:center;
+                    gap:16px;
                     background:#f9f9f9;
-                    border-radius:15px;
-                    padding:18px;
-                    margin-top:20px;
-                    border:1px solid #ddd;
+                    border-radius:14px;
+                    padding:14px;
+                    margin-bottom:12px;
+                    border:1px solid #e0e0e0;
                 ">
-
-                    <div class="flex-box"
+                    <img src="{image}"
+                    onerror="this.src='https://via.placeholder.com/100'"
                     style="
-                        display:flex;
-                        gap:25px;
-                        align-items:center;
-                        flex-wrap:wrap;
+                        width:90px;
+                        height:90px;
+                        object-fit:cover;
+                        border-radius:10px;
+                        border:1px solid #ddd;
+                        flex-shrink:0;
                     ">
+                    <div>
 
-                        <!-- LEFT -->
-                        <div class="left-box"
-                        style="
-                            width:220px;
-                            text-align:center;
-                        ">
-
-                            <img src="{image}"
-                            onerror="this.src='https://via.placeholder.com/250'"
-                            class="product-img"
-                            style="
-                                width:170px;
-                                height:170px;
-                                object-fit:cover;
-                                border-radius:12px;
-                                background:white;
-                                border:1px solid #ddd;
-                            ">
-
-                            <h2 style="
-                                margin-top:15px;
-                                font-size:26px;
-                                color:#111;
-                            ">
-                                {name}
-                            </h2>
-
-                            <p style="
-                                font-size:18px;
-                                font-weight:bold;
-                                color:#555;
-                            ">
-                                Quantity: {qty}
-                            </p>
-
-                        </div>
-
-                        <!-- RIGHT -->
-                        <div class="right-box"
-                        style="
-                            flex:1;
-                            min-width:280px;
-                            background:white;
-                            padding:22px;
-                            border-radius:15px;
-                            border:1px solid #eee;
-                        ">
-
-                            <!-- STATUS -->
-                            <div class="status-text"
-                            style="
-                                font-size:30px;
-                                font-weight:bold;
-                                margin-bottom:25px;
-                                color:#111;
-                            ">
-                                🚚 {status}
-                            </div>
-
-                            <!-- TRACK -->
-                            <div style="
-                                margin-top:20px;
-                            ">
-
-                                <!-- LINE -->
-                                <div style="
-                                    position:relative;
-                                    height:8px;
-                                    background:#ddd;
-                                    border-radius:20px;
-                                    overflow:visible;
-                                ">
-
-                                    <!-- GREEN LINE -->
-                                    <div style="
-                                        position:absolute;
-                                        left:0;
-                                        top:0;
-                                        height:100%;
-                                        width:{progress_width};
-                                        background:#28a745;
-                                        border-radius:20px;
-                                        transition:1s;
-                                    "></div>
-
-                                    <!-- TRUCK -->
-                                    <div class="truck"
-                                    style="
-                                        position:absolute;
-                                        top:-18px;
-                                        left:calc({progress_width} - 14px);
-                                        font-size:28px;
-                                        transition:1s;
-                                        transform:scaleX(-1);
-                                        animation:{
-                                            'none' if status == 'Delivered'
-                                            else 'truckmove 0.8s infinite'
-                                        };
-                                    ">
-                                        🚚
-                                    </div>
-
-                                </div>
-
-                                <!-- STEPS -->
-                                <div class="steps"
-                                style="
-                                    display:flex;
-                                    justify-content:space-between;
-                                    margin-top:18px;
-                                    font-size:12px;
-                                    font-weight:bold;
-                                    color:#555;
-                                    flex-wrap:wrap;
-                                    gap:10px;
-                                ">
-
-                                    <span>Ordered</span>
-
-                                    <span>Packed</span>
-
-                                    <span>Shipped</span>
-
-                                    <span>Out For Delivery</span>
-
-                                    <span>Delivered</span>
-
-                                </div>
-
-                            </div>
-                """
-
-                # SHOW BUTTON ONLY AFTER DELIVERED
-                if status == "Delivered":
-
-                    # ORDER RECEIVED
-                    if not received:
-
-                        html += f"""
                         <div style="
-                            text-align:center;
-                            margin-top:25px;
+                            font-size:17px;
+                            font-weight:bold;
+                            color:#111;
+                            margin-bottom:5px;
                         ">
-
-                            <a href="/received/{order_id}"
-                            style="
-                                display:inline-block;
-                                background:green;
-                                color:white;
-                                text-decoration:none;
-                                padding:12px 25px;
-                                border-radius:10px;
-                                font-size:16px;
-                                font-weight:bold;
-                            ">
-                                Order Received
-                            </a>
-
+                            {name}
                         </div>
-                        """
 
-                    # RETURN BUTTON
-                    else:
-
-                        html += f"""
                         <div style="
-                            text-align:center;
-                            margin-top:25px;
+                            font-size:14px;
+                            color:#555;
+                            font-weight:bold;
                         ">
-
-                            <form method="post"
-                            action="/return_order">
-
-                                <input
-                                type="hidden"
-                                name="product"
-                                value="{name}">
-
-                                <input
-                                type="hidden"
-                                name="order_time"
-                                value="{created}">
-
-                                <button type="submit"
-                                style="
-                                    background:red;
-                                    color:white;
-                                    border:none;
-                                    padding:12px 25px;
-                                    border-radius:10px;
-                                    cursor:pointer;
-                                    font-size:16px;
-                                    font-weight:bold;
-                                ">
-                                    Return Product
-                                </button>
-
-                            </form>
-
-                        </div>
-                        """
-
-                html += """
+                            Quantity: {qty}
                         </div>
 
                     </div>
-
                 </div>
                 """
 
             except:
                 pass
 
+        truck_left = (
+            "2px"
+            if status == "Payment Pending"
+            else f"calc({progress_width} - 14px)"
+        )
+
+        truck_anim = (
+            "none"
+            if status == "Delivered"
+            else "truckmove 0.8s infinite"
+        )
+
+        html += f"""
+        <div style="
+            font-size:22px;
+            font-weight:bold;
+            color:#111;
+            margin:18px 0 10px;
+        ">
+            {status}
+        </div>
+
+        <div style="margin-bottom:10px;">
+
+            <div style="
+                position:relative;
+                height:8px;
+                background:#ddd;
+                border-radius:20px;
+                overflow:visible;
+            ">
+
+                <div style="
+                    position:absolute;
+                    left:0;
+                    top:0;
+                    height:100%;
+                    width:{progress_width};
+                    background:#28a745;
+                    border-radius:20px;
+                    transition:1s;
+                "></div>
+
+                <div style="
+                    position:absolute;
+                    top:-18px;
+                    left:{truck_left};
+                    font-size:24px;
+                    transition:1s;
+                    transform:scaleX(-1);
+                    animation:{truck_anim};
+                ">
+                    🚚
+                </div>
+
+            </div>
+
+            <div style="
+                display:flex;
+                justify-content:space-between;
+                margin-top:18px;
+                font-size:11px;
+                font-weight:bold;
+                color:#555;
+            ">
+                <span>Ordered</span>
+                <span>Packed</span>
+                <span>Shipped</span>
+                <span>Out For Delivery</span>
+                <span>Delivered</span>
+            </div>
+
+        </div>
+        """
+        # BUTTONS
+        if status == "Delivered":
+
+            if not received:
+
+                html += f"""
+                <div style="text-align:center;margin-top:18px;">
+
+                    <a href="/received/{order_id}"
+                    style="
+                        display:inline-block;
+                        background:green;
+                        color:white;
+                        text-decoration:none;
+                        padding:12px 25px;
+                        border-radius:10px;
+                        font-size:16px;
+                        font-weight:bold;
+                    ">
+                        Order Received
+                    </a>
+
+                </div>
+                """
+
+            else:
+
+                html += f"""
+                <div style="text-align:center;margin-top:18px;">
+
+                    <form method="post" action="/return_order">
+
+                        <input
+                            type="hidden"
+                            name="product"
+                            value="{items}">
+
+                        <input
+                            type="hidden"
+                            name="order_time"
+                            value="{created}">
+
+                        <button
+                            type="submit"
+                            style="
+                                background:red;
+                                color:white;
+                                border:none;
+                                padding:12px 25px;
+                                border-radius:10px;
+                                cursor:pointer;
+                                font-size:16px;
+                                font-weight:bold;
+                            ">
+                            Return Product
+                        </button>
+
+                    </form>
+
+                </div>
+                """
+
+            html += f"""
+            <div style="
+                text-align:center;
+                margin-top:12px;
+            ">
+
+                <a
+                href="/delete_order/{order_id}"
+                onclick="return confirm('Delete this order permanently?')"
+                style="
+                    display:inline-block;
+                    background:#dc3545;
+                    color:white;
+                    text-decoration:none;
+                    padding:12px 25px;
+                    border-radius:10px;
+                    font-size:16px;
+                    font-weight:bold;
+                ">
+                    🗑 Delete Order
+                </a>
+
+            </div>
+            """
+
         html += "</div>"
 
     html += """
+    <div style="
+        position:sticky;
+        bottom:15px;
+        text-align:center;
+        margin-top:20px;
+    ">
+
+        <button
+            type="submit"
+            onclick="return confirm('Delete selected delivered orders permanently?')"
+            style="
+                background:#dc3545;
+                color:white;
+                border:none;
+                padding:14px 30px;
+                border-radius:12px;
+                font-size:18px;
+                font-weight:bold;
+                cursor:pointer;
+            ">
+            🗑 Delete Selected Orders
+        </button>
+
+    </div>
+
+    </form>
+
     </div>
 
     </body>
@@ -2967,8 +3340,8 @@ Product: {product}
             "Content-Type":"application/json"
         },
         json={
-            "service_id":"service_shopboss",
-            "template_id":"template_shopboss",
+            "service_id":"service_shopboss2",
+            "template_id":"template_3jp7vty",
             "user_id":"9bTfVOFVe_u1Mt51L",
             "template_params":{
                 "name":session.get("user"),
@@ -3050,8 +3423,23 @@ def update_status(order_id, status):
 # ---------------- FAVICON ----------------
 @ShopBoss.route("/favicon.ico")
 def favicon():
-    from flask import send_from_directory
     return send_from_directory("static", "favicon.ico", mimetype="image/x-icon")
+
+@ShopBoss.route("/favicon-512.png")
+def favicon_512():
+    return send_from_directory("static", "favicon-512.png", mimetype="image/png")
+
+@ShopBoss.route("/apple-touch-icon.png")
+def apple_touch_icon():
+    return send_from_directory("static", "apple-touch-icon.png", mimetype="image/png")
+
+@ShopBoss.route("/icon-192.png")
+def icon_192():
+    return send_from_directory("static", "icon-192.png", mimetype="image/png")
+
+@ShopBoss.route("/site.webmanifest")
+def webmanifest():
+    return send_from_directory("static", "site.webmanifest", mimetype="application/manifest+json")
 
 # ---------------- GOOGLE VERIFICATION ----------------
 @ShopBoss.route("/google0e3bd8ae06ba190d.html")
@@ -3078,17 +3466,18 @@ def sitemap():
     from flask import Response
     base = "https://www--shopbosskmr.replit.app"
     urls = [
-        "/",
-        "/signup",
-        "/login",
-        "/home",
-        "/home?category=Cricket",
-        "/home?category=Football",
-        "/home?category=Fashion",
-        "/home?category=Shoes",
-        "/home?category=Electronics",
-        "/home?category=Kitchen",
-        "/home?category=Garden",
+        "https://www--shopbosskmr.replit.app/signup",
+        "https://www--shopbosskmr.replit.app/login",
+        "https://www--shopbosskmr.replit.app/home",
+        "https://www--shopbosskmr.replit.app/home?category=Cricket",
+        "https://www--shopbosskmr.replit.app/home?category=Football",
+        "https://www--shopbosskmr.replit.app/home?category=Fashion",
+        "https://www--shopbosskmr.replit.app/home?category=Shoes",
+        "https://www--shopbosskmr.replit.app/home?category=Electronics",
+        "https://www--shopbosskmr.replit.app/home?category=Kitchen",
+        "https://www--shopbosskmr.replit.app/home?category=Garden",
+        "https://www--shopbosskmr.replit.app/home?category=Decoration",
+        "https://www--shopbosskmr.replit.app/home?category=House Hold",
     ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'

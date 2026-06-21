@@ -1,12 +1,25 @@
-from flask import Flask, request, redirect, session, send_from_directory
+from flask import Flask, request, redirect, session, send_from_directory, Response
 import psycopg2
 import requests
 import os
+import base64
+import csv
+import io
 from werkzeug.utils import secure_filename
 
 # ---------------- APP ----------------
-def send_order_email(username, items_text, grand_total, payment_method):
+def send_order_email(username, items_text, grand_total, payment_method, mobile="", address="", delivery_charge=0):
     try:
+        message = (
+            "A NEW ORDER RECEIVED\n"
+            f"User: {username}\n"
+            f"Mobile: {mobile}\n"
+            f"Address: {address}\n"
+            f"Payment: {payment_method}\n"
+            f"Items:  {items_text}\n"
+            f"Delivery Charge = ₹{delivery_charge}\n"
+            f"GRAND TOTAL = ₹{grand_total}"
+        )
         requests.post(
             "https://api.emailjs.com/api/v1.0/email/send",
             headers={"Content-Type": "application/json"},
@@ -17,15 +30,15 @@ def send_order_email(username, items_text, grand_total, payment_method):
                 "template_params": {
                     "name": username,
                     "email": "kfayizwani@gmail.com",
-                    "message":
-                     "NEW ORDER RECEIVED\n\nUser: " + username + "\n\nAmount: Rs." + str(grand_total) + "\n\nPayment: " + payment_method + "\n\nItems: " + items_text
+                    "message": message
                 }
             }
-        )()
+        )
     except:
         pass
 ShopBoss = Flask(__name__)
 ShopBoss.secret_key = "fayiz_shopboss_secure_2026_ultra"
+ShopBoss.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
 
 # ----------------UPLOADS 1 -------------------
 
@@ -413,13 +426,13 @@ def splash():
 
             h1{
                 color:#ff9900;
-                font-size:clamp(36px, 10vw, 70px);
+                font-size:clamp(32px, 9.5vw, 70px);
                 margin:0;
             }
 
             p{
-                color:white;
-                font-size:clamp(14px, 3.5vw, 20px);
+                color:rgba(255,255,255,0.7);
+                font-size:clamp(14px, 3.8vw, 20px);
                 margin-top:10px;
             }
 
@@ -754,7 +767,9 @@ def home():
 
         <a class="cat" href="/home?category=Decoration">🎉 Decoration</a>
 
-        <a class="cat" href="/home?category=House">🏠 House Hold</a>
+        <a class="cat" href="/home?category=House Hold">🏠 House Hold</a>
+
+        <a class="cat" href="/home?category=Study">📚 Study</a>
 
         <a class="cat" href="/orders">📦 My Orders</a>
 
@@ -1438,14 +1453,31 @@ def cart():
     cur = conn.cursor()
 
     total = 0
-    total_items = sum(session.get("cart", {}).values())
-    delivery_charge = 20 * total_items
 
     html = header()
 
     html += """
-    <div style="
+    <style>
+    @media(max-width:700px){
+        .cart-wrap{padding:10px !important;align-items:flex-start !important;}
+        .cart-left{width:68% !important;}
+        .cart-right{width:32% !important;padding-left:10px !important;}
+        .cart-item{padding:10px !important;}
+        .cart-img{width:90px !important;height:100px !important;margin-right:10px !important;}
+        .cart-details h2{font-size:13px !important;margin:0 0 4px !important;}
+        .cart-details h3{font-size:12px !important;margin:4px 0 !important;}
+        .cart-btn{width:28px !important;height:28px !important;font-size:16px !important;}
+        .cart-del{height:28px !important;padding:0 8px !important;font-size:12px !important;}
+        .cart-summary{padding:12px !important;}
+        .cart-summary h2{font-size:14px !important;}
+        .cart-summary h1{font-size:16px !important;}
+        .cart-summary p{font-size:12px !important;margin:4px 0 !important;}
+        .cart-buy{height:32px !important;font-size:12px !important;}
+    }
+    </style>
+    <div class="cart-wrap" style="
         display:flex;
+        align-items:flex-start;
         padding:30px;
         background:#eaeded;
         font-family:Arial;
@@ -1455,8 +1487,10 @@ def cart():
 
     # LEFT SIDE
     html += """
-    <div style="
+    <div class="cart-left" style="
         width:70%;
+        display:flex;
+        flex-direction:column;
     ">
     """
 
@@ -1507,7 +1541,7 @@ def cart():
             total += subtotal
 
             html += f"""
-            <div style="
+            <div class="cart-item" style="
                 background:white;
                 padding:20px;
                 margin-bottom:20px;
@@ -1516,17 +1550,19 @@ def cart():
                 box-shadow:0 2px 6px rgba(0,0,0,0.1);
             ">
 
-                <img src="{p[3]}"
+                <img class="cart-img" src="{p[3]}"
                 style="
                     width:180px;
                     height:200px;
                     object-fit:cover;
                     border-radius:10px;
                     margin-right:20px;
+                    flex-shrink:0;
                 ">
 
-                <div style="
+                <div class="cart-details" style="
                     flex:1;
+                    min-width:0;
                 ">
 
                     <h2>{p[1]}</h2>
@@ -1545,7 +1581,7 @@ def cart():
                     ">
 
                         <!-- MINUS -->
-                        <a href="/minus/{p[0]}"
+                        <a class="cart-btn" href="/minus/{p[0]}"
                         style="
                             width:40px;
                             height:40px;
@@ -1558,12 +1594,13 @@ def cart():
                             font-size:22px;
                             border-radius:6px;
                             font-weight:bold;
+                            flex-shrink:0;
                         ">
                             -
                         </a>
 
                         <!-- PLUS -->
-                        <a href="/add/{p[0]}"
+                        <a class="cart-btn" href="/add/{p[0]}"
                         style="
                             width:40px;
                             height:40px;
@@ -1576,12 +1613,13 @@ def cart():
                             font-size:22px;
                             border-radius:6px;
                             font-weight:bold;
+                            flex-shrink:0;
                         ">
                             +
                         </a>
 
                         <!-- DELETE -->
-                        <a href="/delete/{p[0]}"
+                        <a class="cart-del" href="/delete/{p[0]}"
                         style="
                             height:40px;
                             display:flex;
@@ -1593,6 +1631,7 @@ def cart():
                             text-decoration:none;
                             border-radius:6px;
                             font-weight:bold;
+                            flex-shrink:0;
                         ">
                             Delete
                         </a>
@@ -1613,30 +1652,36 @@ def cart():
     html += "</div>"
 
     # RIGHT SIDE
+    if total <= 5:
+        delivery_charge = 5
+    elif total <= 20:
+        delivery_charge = 10
+    else:
+        delivery_charge = 20
     grand_total = total + delivery_charge
 
     html += f"""
-    <div style="
+    <div class="cart-right" style="
         width:30%;
         padding-left:25px;
+        display:flex;
+        flex-direction:column;
     ">
 
-        <div style="
+        <div class="cart-summary" style="
             background:white;
             padding:25px;
             border-radius:10px;
             box-shadow:0 2px 6px rgba(0,0,0,0.1);
-            position:sticky;
-            top:7px;
         ">
 
             <h2>Order Summary</h2><hr>
             <p>Delivery Charge: ₹{delivery_charge}</p>
-            <h1 style="color:green;font-size:22">
+            <h1 style="color:green;font-size:22px;">
                 ₹{grand_total}
             </h1>
 
-            <a href="/address"
+            <a class="cart-buy" href="/address"
             style="
             height:39px;
             display:flex;
@@ -1670,7 +1715,7 @@ def admin():
 
     if request.method == "POST":
 
-        if request.form["s"] == "fayiz":
+        if request.form["s"] == "control":
 
             session["admin"] = True
 
@@ -1748,16 +1793,9 @@ def panel():
 
             if image_file and image_file.filename:
 
-                filename = secure_filename(image_file.filename)
-
-                filepath = os.path.join(
-                    ShopBoss.config["UPLOAD_FOLDER"],
-                    filename
-                )
-
-                image_file.save(filepath)
-
-                image = "/" + filepath.replace("\\", "/")
+                mime = image_file.content_type or "image/jpeg"
+                data = base64.b64encode(image_file.read()).decode("utf-8")
+                image = f"data:{mime};base64,{data}"
 
             cur.execute(
                 """
@@ -1776,22 +1814,16 @@ def panel():
         # UPDATE PRODUCT
         elif "update" in request.form:
 
-            image = request.form["old_image"]
-
             image_file = request.files.get("image")
 
             if image_file and image_file.filename:
-
-                filename = secure_filename(image_file.filename)
-
-                filepath = os.path.join(
-                    ShopBoss.config["UPLOAD_FOLDER"],
-                    filename
-                )
-
-                image_file.save(filepath)
-
-                image = "/" + filepath.replace("\\", "/")
+                mime = image_file.content_type or "image/jpeg"
+                data = base64.b64encode(image_file.read()).decode("utf-8")
+                image = f"data:{mime};base64,{data}"
+            else:
+                cur.execute("SELECT image FROM products WHERE id=%s", (request.form["id"],))
+                row = cur.fetchone()
+                image = row[0] if row else ""
 
             cur.execute(
                 """
@@ -1828,6 +1860,9 @@ def panel():
 
     products = cur.fetchall()
 
+    imported = request.args.get("imported")
+    import_errors = request.args.get("errors")
+
     html = header()
 
     html += """
@@ -1836,7 +1871,25 @@ def panel():
         min-height:100vh;
         padding:25px;
         font-family:Arial;
-    ">
+    ">"""
+
+    if imported is not None:
+        html += f"""
+        <div style="
+            background:#d4edda;
+            border:1px solid #c3e6cb;
+            color:#155724;
+            padding:14px 20px;
+            border-radius:8px;
+            margin-bottom:20px;
+            font-size:15px;
+            font-weight:bold;
+        ">
+            &#10003; Successfully imported {imported} products!
+            {f"({import_errors} rows skipped due to errors)" if int(import_errors or 0) > 0 else ""}
+        </div>"""
+
+    html += """
 
         <div style="
             display:flex;
@@ -1900,21 +1953,29 @@ def panel():
                 <label style="
                     flex:2;
                     padding:10px;
-                    border:1px solid #ccc;
+                    border:1px solid #767676;
                     background:white;
                     cursor:pointer;
                     border-radius:2px;
                     display:flex;
                     align-items:center;
-                ">
-                    Upload Image
+                    color:#757575;
+                    font-size:14px;
+                    box-sizing:border-box;
+                    min-width:0;
+                    overflow:hidden;
+                    white-space:nowrap;
+                    text-overflow:ellipsis;
+                " id="img-label">
+                    Choose Image
 
                     <input
                     type="file"
                     name="image"
                     accept="image/*"
                     required
-                    style="display:none;">
+                    style="display:none;"
+                    onchange="document.getElementById('img-label').textContent = this.files[0] ? this.files[0].name : 'Choose Image'; document.getElementById('img-label').style.color = this.files[0] ? '#111' : '#757575'; this.parentNode.appendChild(this);">
                 </label>
 
                 <select
@@ -1932,6 +1993,7 @@ def panel():
                     <option>Garden</option>
                     <option>Decoration</option>
                     <option>House Hold</option>
+                    <option>Study</option>
 
                 </select>
 
@@ -1949,6 +2011,65 @@ def panel():
 
             </form>
 
+        </div>
+
+        <div style="
+            background:white;
+            padding:20px;
+            border-radius:10px;
+            margin-bottom:25px;
+            box-shadow:0 2px 8px rgba(0,0,0,0.1);
+        ">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h2 style="margin:0;">Bulk Import Products (CSV)</h2>
+                <a href="/csv_template" style="
+                    background:#17a2b8;
+                    color:white;
+                    padding:8px 16px;
+                    border-radius:6px;
+                    text-decoration:none;
+                    font-size:14px;
+                    font-weight:bold;
+                ">&#11015; Download Template</a>
+            </div>
+            <p style="color:#666;margin:0 0 12px 0;font-size:14px;">
+                Upload a CSV with columns: <b>name, price, category, image_url</b> &mdash; add up to 1000 products at once.
+                Leave image_url blank for a placeholder image.
+            </p>
+            <form method="post" action="/bulk_import" enctype="multipart/form-data"
+            style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <label style="
+                    flex:1;
+                    padding:10px;
+                    border:1px solid #767676;
+                    background:white;
+                    cursor:pointer;
+                    border-radius:2px;
+                    display:flex;
+                    align-items:center;
+                    color:#757575;
+                    font-size:14px;
+                    box-sizing:border-box;
+                    white-space:nowrap;
+                    overflow:hidden;
+                    text-overflow:ellipsis;
+                " id="csv-label">
+                    Choose CSV File
+                    <input type="file" name="csv_file" accept=".csv,text/csv" required
+                    style="display:none;"
+                    onchange="document.getElementById('csv-label').textContent = this.files[0] ? this.files[0].name : 'Choose CSV File'; document.getElementById('csv-label').style.color = this.files[0] ? '#111' : '#757575'; this.parentNode.appendChild(this);">
+                </label>
+                <button type="submit" style="
+                    background:#28a745;
+                    color:white;
+                    border:none;
+                    padding:10px 24px;
+                    border-radius:6px;
+                    cursor:pointer;
+                    font-weight:bold;
+                    font-size:15px;
+                ">Import</button>
+            </form>
         </div>
 
         <div style="
@@ -1990,10 +2111,6 @@ def panel():
 
                 <input type="hidden" name="id" value="{p[0]}">
 
-                <input type="hidden"
-                name="old_image"
-                value="{p[3]}">
-
                 <input
                 name="name"
                 value="{p[1]}"
@@ -2022,6 +2139,7 @@ def panel():
                     <option {"selected" if category=="Garden" else ""}>Garden</option>
                     <option {"selected" if category=="Decoration" else ""}>Decoration</option>
                     <option {"selected" if category=="House Hold" else ""}>House Hold</option>
+                    <option {"selected" if category=="Study" else ""}>Study</option>
 
                 </select>
 
@@ -2109,6 +2227,11 @@ def all_orders():
 
     for o in orders:
 
+        if o[3] == "Delivered":
+            delete_btn = f'<a href="/admin_delete_order/{o[0]}" onclick="return confirm(\'Delete this delivered order?\')" style="background:#dc3545;color:white;padding:8px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">Delete</a>'
+        else:
+            delete_btn = ""
+
         html += f"""
         <div style="
             background:white;
@@ -2144,6 +2267,8 @@ def all_orders():
                 <a href="/update_status/{o[0]}/Out For Delivery">Out For Delivery</a>
 
                 <a href="/update_status/{o[0]}/Delivered">Delivered</a>
+
+                {delete_btn}
 
             </div>
 
@@ -2188,6 +2313,7 @@ def address():
 
         total = 0
         items_text = ""
+        email_items = ""
 
         # =========================
         # CALCULATE TOTAL
@@ -2220,12 +2346,15 @@ def address():
 
                 total += subtotal
 
-                # =========================
-                # FIXED ITEMS TEXT
-                # =========================
-                items_text += f"{name}|||{qty}|||{image}\n"
+                items_text += f"{name}|||{image}|||{qty}\n"
+                email_items += f"{name} - Qty:{qty} - ₹{subtotal}\n"
 
-        delivery_charge = 20 * sum(session.get("cart", {}).values())
+        if total <= 5:
+            delivery_charge = 5
+        elif total <= 20:
+            delivery_charge = 10
+        else:
+            delivery_charge = 20
 
         grand_total = total + delivery_charge
 
@@ -2261,9 +2390,12 @@ def address():
 
             send_order_email(
                 session.get("user",""),
-                items_text,
+                email_items,
                 grand_total,
-                "UPI - Payment Pending"
+                "Online Payment",
+                mobile,
+                address,
+                delivery_charge
             )
 
             session["cart"] = {}
@@ -2436,9 +2568,12 @@ def address():
 
         send_order_email(
             session.get("user",""),
-            items_text,
+            email_items,
             grand_total,
-            "Cash On Delivery"
+            "Cash on Delivery",
+            mobile,
+            address,
+            delivery_charge
         )
 
         session["cart"] = {}
@@ -2474,6 +2609,18 @@ def address():
 
                 <p>
                     Total Amount ₹{grand_total}
+                </p>
+
+                <p style="
+                    background:#fff3cd;
+                    border:1px solid #ffc107;
+                    color:#856404;
+                    padding:10px 16px;
+                    border-radius:8px;
+                    font-weight:bold;
+                    margin-top:10px;
+                ">
+                    🚚 Order Is Expected Within 6 Days
                 </p>
 
                 <a href="/"
@@ -2664,6 +2811,18 @@ def payment_success():
                 <b>₹{amount}</b>.
             </p>
 
+            <p style="
+                background:#fff3cd;
+                border:1px solid #ffc107;
+                color:#856404;
+                padding:10px 16px;
+                border-radius:8px;
+                font-weight:bold;
+                margin:0 0 16px;
+            ">
+                🚚 Order Is Expected Within 6 Days
+            </p>
+
             <div style="
                 background:#fff8e1;
                 border:2px solid #ffd814;
@@ -2709,86 +2868,86 @@ def payment_success():
     </div>
     """
 
----------------- DELETE SINGLE ORDER ----------------
+# ---------------- DELETE SINGLE ORDER ----------------
 
-@ShopBoss.route("/delete_order/int:order_id")
+@ShopBoss.route("/delete_order/<int:order_id>")
 def delete_order(order_id):
 
-if not session.get("user"):
-    return redirect("/login")
-
-conn = db()
-cur = conn.cursor()
-
-cur.execute("""
-    DELETE FROM orders
-    WHERE id=%s
-    AND username=%s
-    AND status='Delivered'
-""", (order_id, session.get("user")))
-
-conn.commit()
-
-cur.close()
-conn.close()
-
-return redirect("/orders")
----------------- DELETE MULTIPLE ORDERS ----------------
-
-@ShopBoss.route("/delete_orders", methods=["POST"])
-def delete_orders():
-
-if not session.get("user"):
-    return redirect("/login")
-
-order_ids = request.form.getlist("order_ids")
-
-if order_ids:
+    if not session.get("user"):
+        return redirect("/login")
 
     conn = db()
     cur = conn.cursor()
 
-    for oid in order_ids:
-
-        cur.execute("""
-            DELETE FROM orders
-            WHERE id=%s
-            AND username=%s
-            AND status='Delivered'
-        """, (oid, session.get("user")))
+    cur.execute("""
+        DELETE FROM orders
+        WHERE id=%s
+        AND username=%s
+        AND status='Delivered'
+    """, (order_id, session.get("user")))
 
     conn.commit()
 
     cur.close()
     conn.close()
 
-return redirect("/orders")
----------------- ORDERS ----------------
+    return redirect("/orders")
+# ---------------- DELETE MULTIPLE ORDERS ----------------
+
+@ShopBoss.route("/delete_orders", methods=["POST"])
+def delete_orders():
+
+    if not session.get("user"):
+        return redirect("/login")
+
+    order_ids = request.form.getlist("order_ids")
+
+    if order_ids:
+
+        conn = db()
+        cur = conn.cursor()
+
+        for oid in order_ids:
+
+            cur.execute("""
+                DELETE FROM orders
+                WHERE id=%s
+                AND username=%s
+                AND status='Delivered'
+            """, (oid, session.get("user")))
+
+        conn.commit()
+
+        cur.close()
+        conn.close()
+
+    return redirect("/orders")
+# ---------------- ORDERS ----------------
 
 @ShopBoss.route("/orders")
 def orders():
 
-if not session.get("user"):
-    return redirect("/login")
+    if not session.get("user"):
+        return redirect("/login")
 
-conn = db()
-cur = conn.cursor()
+    conn = db()
+    cur = conn.cursor()
 
-cur.execute(
-    """
-    SELECT id,items,total,created_at,received,status
-    FROM orders
-    WHERE username=%s
-    ORDER BY id DESC
-    """,
-    (session.get("user"),)
-)
+    cur.execute(
+        """
+        SELECT id,items,total,created_at,received,status
+        FROM orders
+        WHERE username=%s
+        ORDER BY id DESC
+        """,
+        (session.get("user"),)
+    )
 
-orders = cur.fetchall()
+    orders = cur.fetchall()
 
-html = header()
+    html = header()
 
-html += """
+    html += """
 <html>
 
 <head>
@@ -2868,16 +3027,11 @@ body{
 
 <div class="main">
 
-    <h1 style="
-        margin-bottom:20px;
-    ">
-        📦 My Orders
-    </h1>
 """
 
-if not orders:
+    if not orders:
 
-    html += """
+        html += """
     <div class="order-card">
 
         <h2>No Orders Yet</h2>
@@ -2900,7 +3054,40 @@ if not orders:
 
     </div>
     """
-html += """ <form method="post" action="/delete_orders"> 
+    html += """
+    <form method="post" action="/delete_orders">
+    <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-bottom:20px;
+        flex-wrap:wrap;
+        gap:10px;
+    ">
+        <h1 style="margin:0;">📦 My Orders</h1>
+        <button
+            type="submit"
+            onclick="return confirm('Delete selected delivered orders permanently?')"
+            style="
+                background:#28a745;
+                color:white;
+                border:none;
+                padding:12px 28px;
+                border-radius:50px;
+                font-size:15px;
+                font-weight:700;
+                cursor:pointer;
+                letter-spacing:0.4px;
+                box-shadow:0 4px 18px rgba(40,167,69,0.35);
+                display:inline-flex;
+                align-items:center;
+                gap:7px;
+            "
+            onmouseover="this.style.transform='scale(1.04)'"
+            onmouseout="this.style.transform='scale(1)'">
+            <span>🗑</span> Delete Selected
+        </button>
+    </div>
 """
     # ORDERS LOOP
     for o in orders:
@@ -2916,19 +3103,50 @@ html += """ <form method="post" action="/delete_orders">
 
         if status == "Delivered":
             delete_checkbox = f"""
-            <label style="
-                display:flex;
+            <label title="Select to Delete" style="
+                position:absolute;
+                top:14px;
+                right:14px;
+                display:inline-flex;
                 align-items:center;
-                gap:8px;
-                color:red;
-                font-weight:bold;
+                gap:7px;
+                cursor:pointer;
+                user-select:none;
+                z-index:2;
+                flex-direction:row-reverse;
             ">
-                <input
-                    type="checkbox"
-                    name="order_ids"
-                    value="{order_id}"
-                    style="width:20px;height:20px;">
-                Select To Delete
+                <span style="position:relative;width:28px;height:28px;flex-shrink:0;">
+                    <input
+                        type="checkbox"
+                        name="order_ids"
+                        value="{order_id}"
+                        style="
+                            opacity:0;
+                            width:28px;height:28px;
+                            position:absolute;
+                            margin:0;
+                            cursor:pointer;
+                            z-index:1;
+                        "
+                        onchange="
+                            var box = this.nextElementSibling;
+                            box.style.background = this.checked ? '#28a745' : 'white';
+                            box.style.borderColor = this.checked ? '#28a745' : '#ccc';
+                            box.innerHTML = this.checked ? '✓' : '';
+                        ">
+                    <span style="
+                        position:absolute;top:0;left:0;
+                        width:28px;height:28px;
+                        background:white;
+                        border:2px solid #ccc;
+                        border-radius:50%;
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:16px;font-weight:bold;color:white;
+                        transition:all 0.15s;
+                        box-shadow:0 1px 4px rgba(0,0,0,0.12);
+                    "></span>
+                </span>
+                <span style="font-size:12px;font-weight:600;color:#28a745;">Select</span>
             </label>
             """
 
@@ -2942,11 +3160,24 @@ html += """ <form method="post" action="/delete_orders">
         )
 
         html += f"""
-        <div class="order-card">
+        <div class="order-card" style="position:relative;">
+
+            {delete_checkbox}
+
+            <div style="
+                text-align:center;
+                color:gray;
+                font-size:13px;
+                font-weight:600;
+                margin-bottom:12px;
+                letter-spacing:0.3px;
+            ">
+                {created}
+            </div>
 
             <div style="
                 display:flex;
-                justify-content:space-between;
+                justify-content:flex-start;
                 align-items:center;
                 flex-wrap:wrap;
                 gap:10px;
@@ -2961,15 +3192,6 @@ html += """ <form method="post" action="/delete_orders">
                     ₹{total}
                 </h2>
 
-                {delete_checkbox}
-
-                <div style="
-                    color:gray;
-                    font-size:13px;
-                ">
-                    {created}
-                </div>
-
             </div>
         """
 
@@ -2979,17 +3201,32 @@ html += """ <form method="post" action="/delete_orders">
 
                 parts = item.split("|||")
 
-                name = parts[0]
-
-                if parts[1].startswith("http"):
-                    image = parts[1]
-                    qty = parts[2]
-                else:
-                    qty = parts[1]
-                    image = parts[2]
-
-                if not name.strip():
+                if len(parts) < 2:
                     continue
+
+                name = parts[0].strip()
+
+                if not name:
+                    continue
+
+                if len(parts) == 2:
+                    # old format: name|||qty
+                    qty = parts[1].strip()
+                    image = "https://via.placeholder.com/100x100?text=No+Image"
+                elif len(parts) >= 3:
+                    # new format: name|||image|||qty
+                    p1 = parts[1].strip()
+                    p2 = parts[2].strip()
+                    if p1.startswith("http") or p1.startswith("data:"):
+                        image = p1
+                        qty = p2
+                    elif p2.startswith("http") or p2.startswith("data:"):
+                        qty = p1
+                        image = p2
+                    else:
+                        # neither looks like an image, treat p1 as qty
+                        qty = p1
+                        image = "https://via.placeholder.com/100x100?text=No+Image"
 
                 html += f"""
                 <div style="
@@ -3142,91 +3379,27 @@ html += """ <form method="post" action="/delete_orders">
                 html += f"""
                 <div style="text-align:center;margin-top:18px;">
 
-                    <form method="post" action="/return_order">
-
-                        <input
-                            type="hidden"
-                            name="product"
-                            value="{items}">
-
-                        <input
-                            type="hidden"
-                            name="order_time"
-                            value="{created}">
-
-                        <button
-                            type="submit"
-                            style="
-                                background:red;
-                                color:white;
-                                border:none;
-                                padding:12px 25px;
-                                border-radius:10px;
-                                cursor:pointer;
-                                font-size:16px;
-                                font-weight:bold;
-                            ">
-                            Return Product
-                        </button>
-
-                    </form>
+                    <a href="/return_order/{order_id}"
+                    style="
+                        display:inline-block;
+                        background:red;
+                        color:white;
+                        text-decoration:none;
+                        padding:12px 25px;
+                        border-radius:10px;
+                        font-size:16px;
+                        font-weight:bold;
+                    ">
+                        Return Product
+                    </a>
 
                 </div>
                 """
 
-            html += f"""
-            <div style="
-                text-align:center;
-                margin-top:12px;
-            ">
-
-                <a
-                href="/delete_order/{order_id}"
-                onclick="return confirm('Delete this order permanently?')"
-                style="
-                    display:inline-block;
-                    background:#dc3545;
-                    color:white;
-                    text-decoration:none;
-                    padding:12px 25px;
-                    border-radius:10px;
-                    font-size:16px;
-                    font-weight:bold;
-                ">
-                    🗑 Delete Order
-                </a>
-
-            </div>
-            """
 
         html += "</div>"
 
     html += """
-    <div style="
-        position:sticky;
-        bottom:15px;
-        text-align:center;
-        margin-top:20px;
-    ">
-
-        <button
-            type="submit"
-            onclick="return confirm('Delete selected delivered orders permanently?')"
-            style="
-                background:#dc3545;
-                color:white;
-                border:none;
-                padding:14px 30px;
-                border-radius:12px;
-                font-size:18px;
-                font-weight:bold;
-                cursor:pointer;
-            ">
-            🗑 Delete Selected Orders
-        </button>
-
-    </div>
-
     </form>
 
     </div>
@@ -3259,16 +3432,29 @@ def received(id):
 
     return redirect("/orders")
 # ---------------- RETURN ORDER ----------------
-@ShopBoss.route("/return_order", methods=["POST"])
-def return_order():
+@ShopBoss.route("/return_order/<int:order_id>")
+def return_order(order_id):
 
     from datetime import datetime
 
     if not session.get("user"):
         return redirect("/login")
 
-    product = request.form["product"]
-    order_time = request.form["order_time"]
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT items, created_at FROM orders WHERE id=%s AND username=%s",
+        (order_id, session.get("user"))
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        return redirect("/orders")
+
+    product = row[0]
+    order_time = row[1]
 
     # CHECK 2 DAYS
     order_date = datetime.strptime(
@@ -3420,10 +3606,32 @@ def update_status(order_id, status):
     conn.close()
 
     return redirect("/all_orders")
+
+# ---------------- ADMIN DELETE ORDER ----------------
+@ShopBoss.route("/admin_delete_order/<int:order_id>")
+def admin_delete_order(order_id):
+
+    if not session.get("admin"):
+        return redirect("/admin")
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "DELETE FROM orders WHERE id=%s AND status='Delivered'",
+        (order_id,)
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/all_orders")
+
 # ---------------- FAVICON ----------------
 @ShopBoss.route("/favicon.ico")
 def favicon():
-    return send_from_directory("static", "favicon.ico", mimetype="image/x-icon")
+    return send_from_directory(".", "favicon.ico", mimetype="image/x-icon")
 
 @ShopBoss.route("/favicon-512.png")
 def favicon_512():
@@ -3442,13 +3650,80 @@ def webmanifest():
     return send_from_directory("static", "site.webmanifest", mimetype="application/manifest+json")
 
 # ---------------- GOOGLE VERIFICATION ----------------
-@ShopBoss.route("/google0e3bd8ae06ba190d.html")
-def google_verify():
-    return "google-site-verification: google0e3bd8ae06ba190d.html"
-
 @ShopBoss.route("/google929ecdecc4249da0.html")
-def google_verify2():
+def google_verify():
     return "google-site-verification: google929ecdecc4249da0.html"
+
+
+# ---------------- CSV TEMPLATE ----------------
+@ShopBoss.route("/csv_template")
+def csv_template():
+    if not session.get("admin"):
+        return redirect("/admin")
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["name", "price", "category", "image_url"])
+    writer.writerow(["Cricket Bat", "1500", "Cricket", "https://example.com/bat.jpg"])
+    writer.writerow(["Football", "800", "Football", "https://example.com/ball.jpg"])
+    writer.writerow(["T-Shirt", "500", "Fashion", ""])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=shopboss_template.csv"}
+    )
+
+# ---------------- BULK IMPORT ----------------
+@ShopBoss.route("/bulk_import", methods=["POST"])
+def bulk_import():
+    if not session.get("admin"):
+        return redirect("/admin")
+
+    csv_file = request.files.get("csv_file")
+    if not csv_file or not csv_file.filename:
+        return redirect("/panel")
+
+    stream = io.StringIO(csv_file.stream.read().decode("utf-8", errors="ignore"))
+    reader = csv.DictReader(stream)
+
+    conn = db()
+    cur = conn.cursor()
+
+    inserted = 0
+    errors = 0
+    PLACEHOLDER = "https://via.placeholder.com/400x300?text=No+Image"
+
+    for row in reader:
+        try:
+            name = (row.get("name") or "").strip()
+            price_raw = (row.get("price") or "0").strip().replace(",", "")
+            category = (row.get("category") or "General").strip()
+            image_url = (row.get("image_url") or "").strip()
+
+            if not name:
+                continue
+
+            try:
+                price = int(float(price_raw))
+            except Exception:
+                price = 0
+
+            if not image_url:
+                image_url = PLACEHOLDER
+
+            cur.execute(
+                "INSERT INTO products (name, price, image, category) VALUES (%s, %s, %s, %s)",
+                (name, price, image_url, category)
+            )
+            inserted += 1
+        except Exception:
+            conn.rollback()
+            errors += 1
+            continue
+
+    conn.commit()
+    conn.close()
+
+    return redirect(f"/panel?imported={inserted}&errors={errors}")
 
 # ---------------- ROBOTS.TXT ----------------
 @ShopBoss.route("/robots.txt")
@@ -3463,26 +3738,27 @@ Sitemap: https://www--shopbosskmr.replit.app/sitemap.xml
 # ---------------- SITEMAP.XML ----------------
 @ShopBoss.route("/sitemap.xml")
 def sitemap():
-    from flask import Response
     base = "https://www--shopbosskmr.replit.app"
-    urls = [
-        "https://www--shopbosskmr.replit.app/signup",
-        "https://www--shopbosskmr.replit.app/login",
-        "https://www--shopbosskmr.replit.app/home",
-        "https://www--shopbosskmr.replit.app/home?category=Cricket",
-        "https://www--shopbosskmr.replit.app/home?category=Football",
-        "https://www--shopbosskmr.replit.app/home?category=Fashion",
-        "https://www--shopbosskmr.replit.app/home?category=Shoes",
-        "https://www--shopbosskmr.replit.app/home?category=Electronics",
-        "https://www--shopbosskmr.replit.app/home?category=Kitchen",
-        "https://www--shopbosskmr.replit.app/home?category=Garden",
-        "https://www--shopbosskmr.replit.app/home?category=Decoration",
-        "https://www--shopbosskmr.replit.app/home?category=House Hold",
+    paths = [
+        "/",
+        "/signup",
+        "/login",
+        "/home",
+        "/home?category=Cricket",
+        "/home?category=Football",
+        "/home?category=Fashion",
+        "/home?category=Toys",
+        "/home?category=Electronics",
+        "/home?category=Kitchen",
+        "/home?category=Garden",
+        "/home?category=Decoration",
+        "/home?category=House%20Hold",
+        "/home?category=Study",
     ]
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    for u in urls:
-        xml += f"  <url><loc>{base}{u}</loc></url>\n"
+    for path in paths:
+        xml += f"  <url><loc>{base}{path}</loc></url>\n"
     xml += "</urlset>"
     return Response(xml, mimetype="application/xml")
 
